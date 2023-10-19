@@ -1,0 +1,21 @@
+repositories:
+  pick_ik:
+    type: git
+    url: https://github.com/PickNikRobotics/pick_ik.git
+    version: support-continuous-joints
+  ros2_kortex:
+    type: git
+    url: https://github.com/Kinovarobotics/ros2_kortex.git
+    version: main
+  moveit2:
+    type: git
+    url: https://github.com/ros-planning/moveit2.git
+    version: main
+  moveit_msgs:
+    type: git
+    url: https://github.com/ros-planning/moveit_msgs.git
+    version: ros2
+  moveit_resources:
+    type: git
+    url: https://github.com/ros-planning/moveit_resources.git
+    version: ros2
