@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+
+<robot name="gen3_7dof" xmlns:xacro="http://ros.org/wiki/xacro">
+
+    <!-- Arguments -->
+    <xacro:arg name="arm" default="gen3" />
+    <xacro:arg name="dof" default="7" />
+    <xacro:arg name="vision" default="false" />
+
+    <xacro:arg name="gripper" default="" />
+
+    <link name="world" />
+
+    <xacro:include filename="$(find kortex_description)/arms/gen3/7dof/urdf/gen3_macro.xacro" />
+    <xacro:load_arm parent="world"
+	    dof="$(arg dof)"
+	    vision="$(arg vision)"
+	    prefix=""
+	    gripper_joint_name=""
+	    use_fake_hardware="true"
+	    robot_ip="">
+        <origin xyz="0 0 0" rpy="0 0 0" />
+    </xacro:load_arm>
+
+    <link name="scrubber">
+      <visual>
+        <origin xyz="0 0 -0.025" rpy="0 0 0" />
+        <geometry>
+          <cylinder length="0.05" radius="0.08"/>
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+    </link>
+      <joint name="scrubber_joint" type="fixed">
+        <origin xyz="0 0 0.05" rpy="0 0 0" />
+        <parent link="end_effector_link" />
+        <child link="scrubber" />
+        <axis xyz="0 0 0" />
+      </joint>
+
+</robot>
