@@ -64,11 +64,8 @@ int main(int argc, char** argv)
   //
   // The package MoveItVisualTools provides many capabilities for visualizing objects, robots,
   // and trajectories in RViz as well as debugging tools such as step-by-step introspection of a script
-  moveit_visual_tools::MoveItVisualTools visual_tools(
-      node,
-      robot_model->getModelFrame(),
-      "moveit_examples",
-      moveit_cpp->getPlanningSceneMonitorNonConst());
+  moveit_visual_tools::MoveItVisualTools visual_tools(node, robot_model->getModelFrame(), "visual_tools",
+                                                      moveit_cpp->getPlanningSceneMonitorNonConst());
   visual_tools.loadRobotStatePub();
   visual_tools.loadTrajectoryPub();
 
@@ -76,8 +73,9 @@ int main(int argc, char** argv)
   visual_tools.loadRemoteControl();
 
   Eigen::Isometry3d text_pose = Eigen::Isometry3d::Identity();
-  text_pose.translation().z() = 1.75;
-  visual_tools.publishText(text_pose, "MoveItCpp_Demo", rvt::WHITE, rvt::XLARGE);
+  text_pose.translation().z() = 1.3;
+  visual_tools.publishText(text_pose, "roscon23_moveit", rvt::WHITE, rvt::XLARGE);
+  visual_tools.publishCollisionFloor(0.0, "floor", rvt::BLACK);
   visual_tools.trigger();
 
   // Publish Turtle
@@ -86,9 +84,7 @@ int main(int argc, char** argv)
   turtle_pose.pose.position.x = TURTLE_POS_X;
   turtle_pose.pose.position.y = TURTLE_POS_Y;
   turtle_pose.pose.position.z = TURTLE_POS_Z;
-  visual_tools.publishSphere(turtle_pose.pose,
-		             rvt::GREEN,
-			     2 * TURTLE_RADIUS);
+  visual_tools.publishSphere(turtle_pose.pose, rvt::GREEN, 2 * TURTLE_RADIUS);
   visual_tools.trigger();
 
   // 1. IK on fully defined surface pose
@@ -106,11 +102,11 @@ int main(int argc, char** argv)
   {
     if (!target_state.setFromIK(arm_group, target_pose))
     {
-        RCLCPP_ERROR(LOGGER, "Failed to solve IK!");
-	continue;
+      RCLCPP_ERROR(LOGGER, "Failed to solve IK!");
+      continue;
     }
     target_state.update();
-    
+
     visual_tools.publishRobotState(target_state);
     visual_tools.trigger();
     rclcpp::sleep_for(VISUALIZATION_STEP_DURATION);
@@ -126,7 +122,8 @@ int main(int argc, char** argv)
   target_point.header = turtle_pose.header;
   target_point.point = turtle_pose.pose.position;
 
-  auto constraints = kinematic_constraints::constructGoalConstraints(ik_link->getName(), ik_link_offset, target_point, 1e-3 /* tolerance */);
+  auto constraints = kinematic_constraints::constructGoalConstraints(ik_link->getName(), ik_link_offset, target_point,
+                                                                     1e-3 /* tolerance */);
   constraint_samplers::ConstraintSamplerManager sampler_manager;
   planning_scene::PlanningScenePtr scene;
   {
@@ -159,126 +156,33 @@ int main(int argc, char** argv)
 
   // Bump up IK thresholds to allow approximate solutions
   const std::string ik_param_ns = "robot_description_kinematics." + arm_group->getName() + ".";
-  node->set_parameters({rclcpp::Parameter(ik_param_ns + "position_threshold", 0.1),
-		        rclcpp::Parameter(ik_param_ns + "orientation_threshold", 0.1),
-			rclcpp::Parameter(ik_param_ns + "cost_threshold", 0.1)});
+  node->set_parameters({ rclcpp::Parameter(ik_param_ns + "position_threshold", 0.1),
+                         rclcpp::Parameter(ik_param_ns + "orientation_threshold", 0.3),
+                         rclcpp::Parameter(ik_param_ns + "cost_threshold", 0.3) });
 
   kinematic_constraints::KinematicConstraintSet constraints_validator(robot_model);
   constraints_validator.add(constraints, scene->getTransforms());
 
-  auto validity_callback = [&](moveit::core::RobotState* sample_state, const moveit::core::JointModelGroup* group,
-                               const double* joint_positions)
-  {
-    sample_state->setJointGroupPositions(group, joint_positions);
-    sample_state->updateLinkTransforms();
-    return constraints_validator.decide(*sample_state).satisfied;
-  };
-
-  auto constraints_cost_fn = [&](const geometry_msgs::msg::Pose& /* target_pose */, const moveit::core::RobotState& sample_state,
-                                moveit::core::JointModelGroup const* /* group */, const std::vector<double>& /* joint_positions */)
-  {
-    return constraints_validator.decide(sample_state).distance;
-  };
+  auto constraints_cost_fn =
+      [&](const geometry_msgs::msg::Pose& /* target_pose */, const moveit::core::RobotState& sample_state,
+          const moveit::core::JointModelGroup* /* group */, const std::vector<double>& /* joint_positions */) {
+        return constraints_validator.decide(sample_state).distance;
+      };
 
   for (size_t i = 0; i < 10; ++i)
   {
     target_state.setToRandomPositions(arm_group);
-    if (!target_state.setFromIK(arm_group, target_pose, 0.05, validity_callback, ik_options, constraints_cost_fn))
+    if (!target_state.setFromIK(arm_group, target_pose, 0.05, moveit::core::GroupStateValidityCallbackFn(), ik_options,
+                                constraints_cost_fn))
     {
-        RCLCPP_ERROR(LOGGER, "Failed to solve IK!");
-	continue;
+      RCLCPP_ERROR(LOGGER, "Failed to solve IK!");
+      continue;
     }
     target_state.update();
-    
+
     visual_tools.publishRobotState(target_state);
     visual_tools.trigger();
     rclcpp::sleep_for(VISUALIZATION_STEP_DURATION);
-  }
-
-  // 4. Cost function with CartesianInterpolator
-  visual_tools.prompt("Press 'next' to run \"Cost function with CartesianInterpolator\"");
-
-  moveit::core::RobotState start_state(target_state);
-  // start_state.setFromIK(arm_group, target_pose);
-
-  node->set_parameters({rclcpp::Parameter(ik_param_ns + "mode", "local"),
-			rclcpp::Parameter(ik_param_ns + "position_threshold", 0.02),
-		        rclcpp::Parameter(ik_param_ns + "orientation_threshold", 0.1),
-			rclcpp::Parameter(ik_param_ns + "cost_threshold", 0.05),
-			rclcpp::Parameter(ik_param_ns + "minimal_displacement_weight", 0.1)});
-
-  std::vector<std::shared_ptr<moveit::core::RobotState>> waypoints;
-  auto succeeded_distance = moveit::core::CartesianInterpolator::computeCartesianPath(
-      &start_state,
-      arm_group,
-      waypoints,
-      ik_link,
-      Eigen::Vector3d::UnitX(),
-      false /* use local reference frame */,
-      0.05 /* cm distance */,
-      moveit::core::MaxEEFStep(0.005, 0.01),
-      moveit::core::JumpThreshold(0.1),
-      validity_callback,
-      ik_options,
-      constraints_cost_fn);
-
-  RCLCPP_INFO_STREAM(LOGGER, "Planned Cartesian Path for distance " << succeeded_distance << " and waypoints " << waypoints.size());
-  visual_tools.publishArrow(start_state.getGlobalLinkTransform(ik_link), rvt::GREEN, rvt::MEDIUM, 0.05 /* length */);
-  if (succeeded_distance > 0.0 && !waypoints.empty())
-    visual_tools.publishTrajectoryPath(waypoints, arm_group);
-
-  visual_tools.trigger();
-
-  // 5. Constrained Planning
-  visual_tools.prompt("Press 'next' in the RvizVisualToolsGui window to continue the demo");
-
-  ik_options.return_approximate_solution = false;
-  node->set_parameters({rclcpp::Parameter(ik_param_ns + "mode", "global"),
-			rclcpp::Parameter(ik_param_ns + "position_threshold", 0.005),
-		        rclcpp::Parameter(ik_param_ns + "orientation_threshold", 0.01),
-			rclcpp::Parameter(ik_param_ns + "cost_threshold", 0.01),
-			rclcpp::Parameter(ik_param_ns + "minimal_displacement_weight", 0.1)});
-
-  start_state.setToRandomPositions(arm_group);
-  start_state.setFromIK(arm_group, target_pose, 0.05, validity_callback, ik_options, constraints_cost_fn);
-
-  ik_options.return_approximate_solution = true;
-  node->set_parameters({rclcpp::Parameter(ik_param_ns + "mode", "global"),
-			rclcpp::Parameter(ik_param_ns + "position_threshold", 0.1),
-		        rclcpp::Parameter(ik_param_ns + "orientation_threshold", 0.1),
-			rclcpp::Parameter(ik_param_ns + "cost_threshold", 0.1),
-			rclcpp::Parameter(ik_param_ns + "minimal_displacement_weight", 0.1)});
-  auto goal_pose = start_state.getGlobalLinkTransform(ik_link) * Eigen::Translation3d(0.1, 0, 0);
-  target_state.setToRandomPositions(arm_group);
-  target_state.setFromIK(arm_group, goal_pose, 0.05, validity_callback, ik_options, constraints_cost_fn);
-
-  moveit_cpp::PlanningComponent::PlanRequestParameters plan_request_params;
-  plan_request_params.load(node);
-  plan_request_params.planning_pipeline = "ompl";
-  plan_request_params.planner_id = "RRTConnectkConfigDefault";
-  plan_request_params.planning_time = 10.0;
-  planning_component->setStartState(start_state);
-  planning_component->setGoal(target_state);
-  planning_component->setPathConstraints(constraints);
-  const auto ompl_result = planning_component->plan();
-  if (ompl_result)
-  {
-    visual_tools.publishTrajectoryPath(ompl_result.trajectory, arm_group);
-    visual_tools.trigger();
-  }
-
-  // 6. Plan with STOMP
-  visual_tools.prompt("Press 'next' to \"Plan with STOMP \"");
-
-  plan_request_params.planning_pipeline = "stomp";
-  plan_request_params.planner_id = "STOMP";
-  plan_request_params.planning_time = 10.0;
-  const auto stomp_result = planning_component->plan(plan_request_params);
-
-  if (stomp_result)
-  {
-    visual_tools.publishTrajectoryPath(stomp_result.trajectory, arm_group);
-    visual_tools.trigger();
   }
 
   visual_tools.prompt("Press 'next' to shutdown node");

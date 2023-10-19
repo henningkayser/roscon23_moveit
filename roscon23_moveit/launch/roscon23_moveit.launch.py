@@ -7,27 +7,20 @@ from moveit_configs_utils import MoveItConfigsBuilder
 
 
 def generate_launch_description():
-
     launch_arguments = {
         "robot_ip": "xxx.yyy.zzz.www",
         "use_fake_hardware": "true",
-        "gripper": "robotiq_2f_85",
-        "dof": "7",
         "use_external_cable": "true",
     }
 
     moveit_config = (
-        MoveItConfigsBuilder("kinova_gen3_7dof_robotiq_2f_85")
-        .robot_description(mappings=launch_arguments)
+        MoveItConfigsBuilder("roscon23")
+        .robot_description(
+            file_path="description/gen3_7dof.xacro", mappings=launch_arguments
+        )
         .trajectory_execution(file_path="config/moveit_controllers.yaml")
-        .robot_description_kinematics(
-            file_path=get_package_share_directory("roscon23_moveit")
-            + "/config/kinematics.yaml"
-        )
-        .moveit_cpp(
-            file_path=get_package_share_directory("roscon23_moveit")
-            + "/config/moveit_cpp.yaml"
-        )
+        .robot_description_kinematics(file_path="config/kinematics.yaml")
+        .moveit_cpp(file_path="config/moveit_cpp.yaml")
         .to_moveit_configs()
     )
     # MoveItCpp demo executable
